@@ -5,7 +5,7 @@ import nltk
 from sklearn import linear_model, svm, neighbors, naive_bayes
 from sklearn.metrics import accuracy_score, f1_score, roc_auc_score
 # UNCOMMENT THIS
-import enchant
+# import enchant
 
 import grammar_check
 from nltk.tokenize import sent_tokenize
@@ -14,21 +14,38 @@ from nltk import word_tokenize, pos_tag, ne_chunk
 DATA_SET_PATH = "Data Sets/op_spam_v1.4/"
 
 # UNCOMMENT THIS
-SPELLING_DICT = enchant.Dict("en_US")
+# SPELLING_DICT = enchant.Dict("en_US")
 GRAMMAR_CHECK = grammar_check.LanguageTool('en-US')
 
 def main():
 	raw_data = load_data()
-	processed_data = featurize_data(raw_data, generate_bigram_set(raw_data))
-	processed_data.to_csv("data.csv")
-	training_data = processed_data.sample(frac=0.7)
-	validation_data = processed_data.loc[set(processed_data.index)-set(training_data.index)].sample(frac=0.5)
-	test_data = processed_data.loc[set(processed_data.index)-set(training_data.index)-set(validation_data.index)]
+	bigram_set = generate_bigram_set(raw_data)
+	unigram_set = generate_unigram_set(raw_data)
+	# processed_data = featurize_data(raw_data, bigram_set, unigram_set, baseline_flag=False)
+	processed_data_baseline = featurize_data(raw_data, bigram_set, unigram_set, baseline_flag=True)
+	# processed_data.to_csv("data.csv")
+	# training_data = processed_data.sample(frac=0.7)
+	# validation_data = processed_data.loc[set(processed_data.index)-set(training_data.index)].sample(frac=0.5)
+	# test_data = processed_data.loc[set(processed_data.index)-set(training_data.index)-set(validation_data.index)]
+
+
+	# split the baseline data
+	training_data_baseline = processed_data_baseline.sample(frac=0.7)
+	validation_data_baseline = processed_data_baseline.loc[set(processed_data_baseline.index) - \
+														   set(training_data_baseline.index)].sample(frac=0.5)
+	test_data_baseline = processed_data_baseline.loc[set(processed_data_baseline.index) - \
+											set(training_data_baseline.index) - set(validation_data_baseline.index)]
+
+	print("Fitting and Evaluating Baseline Model")
+	model_baseline = create_model(training_data_baseline)
+	evaluate_model(model_baseline, validation_data_baseline)
+
 	# training_data = processed_data.iloc[0:floor(7 * len(processed_data)/10)]
 	# training_data = processed_data.iloc[floor(7 * len(processed_data)/10):floor(7 * len(processed_data)/10)]
 	# training_data = processed_data.iloc[floor(7 * len(processed_data)/10):floor(7 * len(processed_data)/10)]
-	model = create_model(training_data)
-	evaluate_model(model, validation_data)
+	# print("Fitting and Evaluating enhanced model")
+	# model = create_model(training_data)
+	# evaluate_model(model, validation_data)
 
 
 def load_data():
@@ -61,18 +78,39 @@ def generate_bigram_set(raw_data):
 			pos_bigrams.add(pos_bigram)
 	return {"word_bigram_set": word_bigrams, "pos_bigram_set": pos_bigrams}
 
+def generate_unigram_set(raw_data):
+	word_unigrams = set()
+	for review_dict in raw_data:
+		text = review_dict['review']
+		tokens = word_tokenize(text)
+		for word in tokens:
+			word_unigrams.add(word)
+	return word_unigrams
 
-def featurize_data(data, overall_bigram_set_dict):
+def featurize_data(data, overall_bigram_set_dict, word_unigrams, baseline_flag):
 	print "Featurizing the data..."
 	processed_data = []
 	for review in data:
 		text = review['review']
-		review_vector = featurize_review(text, overall_bigram_set_dict)
+		if baseline_flag:
+			review_vector = featurize_review_baseline(text, word_unigrams)
+		else:
+			review_vector = featurize_review(text, overall_bigram_set_dict)
 		review_vector['real'] = 1 if review['real'] else 0
 		processed_data.append(review_vector)
 
 	processed_data = pd.DataFrame.from_dict(processed_data)
 	return processed_data
+
+def featurize_review_baseline(text, word_unigram_set):
+	review_vector = {}
+	word_tokens = word_tokenize(text)
+	for unigram in word_unigram_set:
+		if unigram in word_tokens:
+			review_vector[unigram] = 1
+		else:
+			review_vector[unigram] = 0
+	return review_vector
 
 def get_review_pos_word_bigrams(text):
 	pos_bigrams = []
@@ -115,8 +153,8 @@ def featurize_review(review, overall_bigram_dict):
 		if word.lower() in ['i', 'we', 'me', 'us']:
 			first_person_count = first_person_count + 1
 
-		if re.match('[a-zA-Z]', tag) and SPELLING_DICT.check(word) is not True:
-			misspelled_words = misspelled_words + 1
+		# if re.match('[a-zA-Z]', tag) and SPELLING_DICT.check(word) is not True:
+		# 	misspelled_words = misspelled_words + 1
 		if 'NN' in tag:
 			noun_count = noun_count + 1
 		elif 'JJ' in tag:
@@ -128,11 +166,8 @@ def featurize_review(review, overall_bigram_dict):
 		elif tag == 'CC':
 			CC_count = CC_count + 1
 
-	# sentences = sent_tokenize(review)
-	# review_vector['grammar_errors'] = 0
-	# for sentence in sentences:
-	# 	matches = GRAMMAR_CHECK.check(sentence)
-	# 	review_vector['grammar_errors'] += len(matches)
+	#orthographic features
+
 
 	review_vector['number_oov'] = 0
 	word_set = set()
