@@ -19,11 +19,17 @@ GRAMMAR_CHECK = grammar_check.LanguageTool('en-US')
 
 def main():
 	raw_data = load_data()
-	processed_data = featurize_data(raw_data, generate_bigram_set(raw_data))
-	processed_data.to_csv("data.csv")
-	training_data = processed_data.sample(frac=0.7)
-	validation_data = processed_data.loc[set(processed_data.index)-set(training_data.index)].sample(frac=0.5)
-	test_data = processed_data.loc[set(processed_data.index)-set(training_data.index)-set(validation_data.index)]
+	# processed_data = featurize_data(raw_data, generate_bigram_set(raw_data))
+	
+	training_data = raw_data.sample(frac=0.7)
+	validation_data = raw_data.loc[set(raw_data.index)-set(training_data.index)].sample(frac=0.5)
+	test_data = raw_data.loc[set(raw_data.index)-set(training_data.index)-set(validation_data.index)]
+	
+	training_data = featurize_data(training_data, training=None)
+	validation_data = featurize_data(validation_data, training=training_data)
+	test_data = featurize_data(test_data, training=training_data)
+
+	#processed_data.to_csv("data.csv")
 	# training_data = processed_data.iloc[0:floor(7 * len(processed_data)/10)]
 	# training_data = processed_data.iloc[floor(7 * len(processed_data)/10):floor(7 * len(processed_data)/10)]
 	# training_data = processed_data.iloc[floor(7 * len(processed_data)/10):floor(7 * len(processed_data)/10)]
@@ -44,8 +50,8 @@ def load_data():
 		if filename.endswith(".txt"):
 			with open(fake_reviews_path + filename) as f:
 				data.append({'review': f.readline(), 'real': False})
+	data = pd.DataFrame.from_dict(data)
 	return data
-
 
 def generate_bigram_set(raw_data):
 	word_bigrams = set()
@@ -62,31 +68,33 @@ def generate_bigram_set(raw_data):
 	return {"word_bigram_set": word_bigrams, "pos_bigram_set": pos_bigrams}
 
 
-def featurize_data(data, overall_bigram_set_dict):
+def featurize_data(data, training):
+	#training is either a DF or false (meaning that this is the training run)
 	print "Featurizing the data..."
+	
+	if training is None:
+		training_features = None
+	else:
+		training_features = list(training)
+	
 	processed_data = []
-	for review in data:
+	for index, review in data.iterrows():
 		text = review['review']
-		review_vector = featurize_review(text, overall_bigram_set_dict)
+		review_vector = featurize_review(text, training_features)
 		review_vector['real'] = 1 if review['real'] else 0
 		processed_data.append(review_vector)
 
 	processed_data = pd.DataFrame.from_dict(processed_data)
+	# if training_features is not None:
+	# 	for feature in training_features:
+	# 		if feature not in list(processed_data):
+	# 			processed_data[feature] = 0
+	# processed_data.fillna(0, inplace=True)
 	return processed_data
 
-def get_review_pos_word_bigrams(text):
-	pos_bigrams = []
-	word_bigrams = []
-	tokens = word_tokenize(text)
-	pos_tags = pos_tag(tokens)
-	for i in range(1, len(pos_tags)):
-		word_bigram = pos_tags[i-1][0] + '-' + pos_tags[i][0]
-		pos_bigram = pos_tags[i - 1][1] + '-' + pos_tags[i][1]
-		pos_bigrams.append(pos_bigram)
-		word_bigrams.append(word_bigram)
-	return {"word_bigrams": word_bigrams, "pos_bigrams": pos_bigrams}
+def featurize_review(review, training_features):
+	#training features is list of columns
 
-def featurize_review(review, overall_bigram_dict):
 	review_vector = {}
 	words = review.split(" ")
 	tokens = nltk.word_tokenize(review)
@@ -98,34 +106,65 @@ def featurize_review(review, overall_bigram_dict):
 	misspelled_words = 0
 	VBD_count = 0
 	CC_count = 0
-	review_bigram_dictionary = get_review_pos_word_bigrams(review)
-	review_word_bigrams = review_bigram_dictionary['word_bigrams']
-	review_pos_bigrams = review_bigram_dictionary['pos_bigrams']
+	# review_bigram_dictionary = get_review_pos_word_bigrams(review)
+	# review_word_bigrams = review_bigram_dictionary['word_bigrams']
+	# review_pos_bigrams = review_bigram_dictionary['pos_bigrams']
 
-	overall_word_bigram_set = overall_bigram_dict["word_bigram_set"]
-	overall_pos_bigram_set = overall_bigram_dict["pos_bigram_set"]
+	# overall_word_bigram_set = overall_bigram_dict["word_bigram_set"]
+	# overall_pos_bigram_set = overall_bigram_dict["pos_bigram_set"]
 
-	for word_bigram in overall_word_bigram_set:
-		review_vector[word_bigram] = review_word_bigrams.count(word_bigram)
-	for pos_bigram in overall_pos_bigram_set:
-		review_vector[pos_bigram] = review_pos_bigrams.count(pos_bigram)
+	# for word_bigram in overall_word_bigram_set:
+	# 	review_vector[word_bigram] = review_word_bigrams.count(word_bigram)
+	# for pos_bigram in overall_pos_bigram_set:
+	# 	review_vector[pos_bigram] = review_pos_bigrams.count(pos_bigram)
+	for i in range(len(pos_tags)):
+		curr_word, curr_tag = pos_tags[i]
+		if i==0:
+			prev_word = ""
+			prev_tag = ""
+		else:
+			prev_word, prev_tag = pos_tags[i-0]
 
-	for tag in pos_tags:
-		word, tag = tag
-		if word.lower() in ['i', 'we', 'me', 'us']:
+		word_bigram = prev_word + "-" + curr_word
+		pos_bigram = prev_tag + "-" + curr_tag
+
+		# if training_features is None:
+		# 	#this means we ARE training
+		# 	if word_bigram in review_vector.keys():
+		# 		review_vector[word_bigram] = review_vector[word_bigram] + 1
+		# 	else:
+		# 		review_vector[word_bigram] = 1
+		# 	if pos_bigram in review_vector.keys():
+		# 		review_vector[pos_bigram] = review_vector[pos_bigram] + 1
+		# 	else:
+		# 		review_vector[pos_bigram] = 1
+		# else:
+		# 	#this means we are NOT training
+		# 	if word_bigram in training_features:
+		# 		if word_bigram in review_vector.keys():
+		# 			review_vector[word_bigram] = review_vector[word_bigram] + 1
+		# 		else:
+		# 			review_vector[word_bigram] = 1
+		# 	if pos_bigram in training_features:
+		# 		if pos_bigram in review_vector.keys():
+		# 			review_vector[pos_bigram] = review_vector[pos_bigram] + 1
+		# 		else:
+		# 			review_vector[pos_bigram] = 1
+
+
+		if curr_word.lower() in ['i', 'we', 'me', 'us']:
 			first_person_count = first_person_count + 1
-
-		if re.match('[a-zA-Z]', tag) and SPELLING_DICT.check(word) is not True:
+		if re.match('[a-zA-Z]', curr_tag) and SPELLING_DICT.check(curr_word) is not True:
 			misspelled_words = misspelled_words + 1
-		if 'NN' in tag:
+		if 'NN' in curr_tag:
 			noun_count = noun_count + 1
-		elif 'JJ' in tag:
+		elif 'JJ' in curr_tag:
 			adjective_count = adjective_count + 1
-		elif 'RB' in tag:
+		elif 'RB' in curr_tag:
 			adverb_count = adverb_count + 1
-		elif 'VB' in tag:
+		elif 'VB' in curr_tag:
 			VBD_count = VBD_count + 1
-		elif tag == 'CC':
+		elif curr_tag == 'CC':
 			CC_count = CC_count + 1
 
 	# sentences = sent_tokenize(review)
@@ -134,14 +173,14 @@ def featurize_review(review, overall_bigram_dict):
 	# 	matches = GRAMMAR_CHECK.check(sentence)
 	# 	review_vector['grammar_errors'] += len(matches)
 
-	review_vector['number_oov'] = 0
-	word_set = set()
-	word_tokens = word_tokenize(review)
-	for word in word_tokens:
-		if word_tokens.count(word) == 1:
-			review_vector['number_oov'] += 1
-		word_set.add(word)
-	review_vector['unique_word_count'] = len(word_set)
+	# review_vector['number_oov'] = 0
+	# word_set = set()
+	# word_tokens = word_tokenize(review)
+	# for word in word_tokens:
+	# 	if word_tokens.count(word) == 1:
+	# 		review_vector['number_oov'] += 1
+	# 	word_set.add(word)
+	# review_vector['unique_word_count'] = len(word_set)
 
 	review_vector['length'] = len(review)
 	review_vector['word_count'] = len(words)
@@ -153,6 +192,8 @@ def featurize_review(review, overall_bigram_dict):
 	review_vector['misspell_freq'] = misspelled_words/float(len(words))
 	review_vector['VBD_freq'] = VBD_count/float(len(words))
 	review_vector['CC_freq'] = CC_count/float(len(words))
+	# review_vector['bigram_word_OOV'] = 0
+	# review_vector['bigram_pos_OOV'] = 0
 
 	return review_vector
 
@@ -186,9 +227,11 @@ def evaluate_model(model, data):
 	y_true = data['real']
 	y_pred = model.predict(x)
 	y_pred_prob = model.predict_proba(x)
+	print model.classes_
+	print y_pred_prob
 	print "Accuracy: " + str(accuracy_score(y_true, y_pred))
 	print "F-score: " + str(f1_score(y_true, y_pred))
-	print "AUC: " + str(roc_auc_score(y_true, y_pred_prob))
+	print "AUC: " + str(roc_auc_score(y_true, y_pred_prob[:,1]))
 	# print model.coef_
 
 if __name__ == "__main__": main()
