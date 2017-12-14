@@ -13,7 +13,6 @@ from nltk import word_tokenize, pos_tag, ne_chunk
 
 DATA_SET_PATH = "Data Sets/op_spam_v1.4/"
 
-# UNCOMMENT THIS
 SPELLING_DICT = enchant.Dict("en_US")
 GRAMMAR_CHECK = grammar_check.LanguageTool('en-US')
 
@@ -27,12 +26,9 @@ def main():
 	
 	training_data = featurize_data(training_data, training=None)
 	validation_data = featurize_data(validation_data, training=training_data)
+	print validation_data
 	test_data = featurize_data(test_data, training=training_data)
 
-	#processed_data.to_csv("data.csv")
-	# training_data = processed_data.iloc[0:floor(7 * len(processed_data)/10)]
-	# training_data = processed_data.iloc[floor(7 * len(processed_data)/10):floor(7 * len(processed_data)/10)]
-	# training_data = processed_data.iloc[floor(7 * len(processed_data)/10):floor(7 * len(processed_data)/10)]
 	model = create_model(training_data)
 	evaluate_model(model, validation_data)
 
@@ -52,21 +48,6 @@ def load_data():
 				data.append({'review': f.readline(), 'real': False})
 	data = pd.DataFrame.from_dict(data)
 	return data
-
-def generate_bigram_set(raw_data):
-	word_bigrams = set()
-	pos_bigrams = set()
-	for review_dict in raw_data:
-		text = review_dict['review']
-		tokens = word_tokenize(text)
-		pos_tags = pos_tag(tokens)
-		for i in range(1, len(pos_tags)):
-			word_bigram = pos_tags[i-1][0] + '-' + pos_tags[i][0]
-			pos_bigram = pos_tags[i-1][1] + '-' + pos_tags[i][1]
-			word_bigrams.add(word_bigram)
-			pos_bigrams.add(pos_bigram)
-	return {"word_bigram_set": word_bigrams, "pos_bigram_set": pos_bigrams}
-
 
 def featurize_data(data, training):
 	#training is either a DF or false (meaning that this is the training run)
@@ -89,7 +70,7 @@ def featurize_data(data, training):
 	# 	for feature in training_features:
 	# 		if feature not in list(processed_data):
 	# 			processed_data[feature] = 0
-	# processed_data.fillna(0, inplace=True)
+	processed_data.fillna(0, inplace=True)
 	return processed_data
 
 def featurize_review(review, training_features):
@@ -99,13 +80,11 @@ def featurize_review(review, training_features):
 	words = review.split(" ")
 	tokens = nltk.word_tokenize(review)
 	pos_tags = nltk.pos_tag(tokens)
-	noun_count = 0
-	adjective_count = 0
 	first_person_count = 0
-	adverb_count = 0
 	misspelled_words = 0
-	VBD_count = 0
-	CC_count = 0
+	review_vector['all_caps'] = 0
+	review_vector['title'] = 0
+	review_vector['number'] = 0
 	# review_bigram_dictionary = get_review_pos_word_bigrams(review)
 	# review_word_bigrams = review_bigram_dictionary['word_bigrams']
 	# review_pos_bigrams = review_bigram_dictionary['pos_bigrams']
@@ -128,6 +107,7 @@ def featurize_review(review, training_features):
 		word_bigram = prev_word + "-" + curr_word
 		pos_bigram = prev_tag + "-" + curr_tag
 
+		#THIS BIGRAM WAS NOT EFFECTIVE AT ALL
 		# if training_features is None:
 		# 	#this means we ARE training
 		# 	if word_bigram in review_vector.keys():
@@ -156,16 +136,32 @@ def featurize_review(review, training_features):
 			first_person_count = first_person_count + 1
 		if re.match('[a-zA-Z]', curr_tag) and SPELLING_DICT.check(curr_word) is not True:
 			misspelled_words = misspelled_words + 1
-		if 'NN' in curr_tag:
-			noun_count = noun_count + 1
-		elif 'JJ' in curr_tag:
-			adjective_count = adjective_count + 1
-		elif 'RB' in curr_tag:
-			adverb_count = adverb_count + 1
-		elif 'VB' in curr_tag:
-			VBD_count = VBD_count + 1
-		elif curr_tag == 'CC':
-			CC_count = CC_count + 1
+		
+		if curr_tag in review_vector.keys():
+			review_vector[curr_tag] = review_vector[curr_tag] + 1
+		else:
+			review_vector[curr_tag] = 1
+
+		#THIS UNIGRAM WAS NOT EFFECTIVE AT ALL:
+		# if training_features is None:
+		# 	if curr_word in review_vector.keys():
+		# 		review_vector[curr_word] = review_vector[curr_word] + 1
+		# 	else:
+		# 		review_vector[curr_word] = 1
+		# else:
+		# 	if curr_word in training_features:
+		# 		if curr_word in review_vector.keys():
+		# 			review_vector[curr_word] = review_vector[curr_word] + 1
+		# 		else:
+		# 			review_vector[curr_word] = 1
+
+		#check capitalization
+		if curr_word.isupper():
+			review_vector['all_caps'] = review_vector['all_caps'] + 1
+		if curr_word.istitle():
+			review_vector['title'] = review_vector['title'] + 1
+		if curr_word.isdigit():
+			review_vector['number'] = review_vector['number'] + 1
 
 	# sentences = sent_tokenize(review)
 	# review_vector['grammar_errors'] = 0
@@ -185,13 +181,8 @@ def featurize_review(review, training_features):
 	review_vector['length'] = len(review)
 	review_vector['word_count'] = len(words)
 	review_vector['average_word_length'] = sum(len(x) for x in words)/len(words)
-	review_vector['noun_freq'] = noun_count/float(len(words))
-	review_vector['adjective_freq'] = adjective_count/float(len(words))
 	review_vector['first_person_freq'] = first_person_count/float(len(words))
-	review_vector['adverb_freq'] = adverb_count/float(len(words))
 	review_vector['misspell_freq'] = misspelled_words/float(len(words))
-	review_vector['VBD_freq'] = VBD_count/float(len(words))
-	review_vector['CC_freq'] = CC_count/float(len(words))
 	# review_vector['bigram_word_OOV'] = 0
 	# review_vector['bigram_pos_OOV'] = 0
 
@@ -227,8 +218,8 @@ def evaluate_model(model, data):
 	y_true = data['real']
 	y_pred = model.predict(x)
 	y_pred_prob = model.predict_proba(x)
-	print model.classes_
-	print y_pred_prob
+	# print model.classes_
+	# print y_pred_prob
 	print "Accuracy: " + str(accuracy_score(y_true, y_pred))
 	print "F-score: " + str(f1_score(y_true, y_pred))
 	print "AUC: " + str(roc_auc_score(y_true, y_pred_prob[:,1]))
