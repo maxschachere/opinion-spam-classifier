@@ -3,9 +3,9 @@ import re
 import pandas as pd
 import nltk
 from sklearn import linear_model, svm, neighbors, naive_bayes
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import accuracy_score, f1_score, roc_auc_score
 # UNCOMMENT THIS
-# import enchant
+import enchant
 
 import grammar_check
 from nltk.tokenize import sent_tokenize
@@ -14,12 +14,13 @@ from nltk import word_tokenize, pos_tag, ne_chunk
 DATA_SET_PATH = "Data Sets/op_spam_v1.4/"
 
 # UNCOMMENT THIS
-# SPELLING_DICT = enchant.Dict("en_US")
+SPELLING_DICT = enchant.Dict("en_US")
 GRAMMAR_CHECK = grammar_check.LanguageTool('en-US')
 
 def main():
 	raw_data = load_data()
 	processed_data = featurize_data(raw_data, generate_bigram_set(raw_data))
+	processed_data.to_csv("data.csv")
 	training_data = processed_data.sample(frac=0.7)
 	validation_data = processed_data.loc[set(processed_data.index)-set(training_data.index)].sample(frac=0.5)
 	test_data = processed_data.loc[set(processed_data.index)-set(training_data.index)-set(validation_data.index)]
@@ -31,6 +32,7 @@ def main():
 
 
 def load_data():
+	print "Loading data..."
 	data = []
 	real_reviews_path = DATA_SET_PATH + "real/"
 	fake_reviews_path = DATA_SET_PATH + "fake/"
@@ -61,11 +63,12 @@ def generate_bigram_set(raw_data):
 
 
 def featurize_data(data, overall_bigram_set_dict):
+	print "Featurizing the data..."
 	processed_data = []
 	for review in data:
 		text = review['review']
 		review_vector = featurize_review(text, overall_bigram_set_dict)
-		review_vector['real'] = 'real' if review['real'] else 'fake'
+		review_vector['real'] = 1 if review['real'] else 0
 		processed_data.append(review_vector)
 
 	processed_data = pd.DataFrame.from_dict(processed_data)
@@ -112,9 +115,8 @@ def featurize_review(review, overall_bigram_dict):
 		if word.lower() in ['i', 'we', 'me', 'us']:
 			first_person_count = first_person_count + 1
 
-		# UNCOMMENT THIS
-		# if re.match('[a-zA-Z]', tag) and SPELLING_DICT.check(word) is not True:
-		# 	misspelled_words = misspelled_words + 1
+		if re.match('[a-zA-Z]', tag) and SPELLING_DICT.check(word) is not True:
+			misspelled_words = misspelled_words + 1
 		if 'NN' in tag:
 			noun_count = noun_count + 1
 		elif 'JJ' in tag:
@@ -158,19 +160,20 @@ def get_named_entities():
 	pass	
 
 def create_model(data):
+	print "Creating model..."
 	x = data.loc[:, data.columns != 'real']
 	y = data['real']
 	logreg = linear_model.LogisticRegression()
 	logreg.fit(x, y)
 
-	clf = svm.SVC()
-	clf.fit(x, y)
+	# clf = svm.SVC()
+	# clf.fit(x, y)
 
-	knn = neighbors.KNeighborsClassifier(15)
-	knn.fit(x, y)
+	# knn = neighbors.KNeighborsClassifier(15)
+	# knn.fit(x, y)
 
-	nbc = naive_bayes.GaussianNB()
-	nbc.fit(x, y)
+	# nbc = naive_bayes.GaussianNB()
+	# nbc.fit(x, y)
 
 	return logreg
 	# return clf
@@ -178,10 +181,14 @@ def create_model(data):
 	# return nbc
 
 def evaluate_model(model, data):
+	print "Evaluating model..."
 	x = data.loc[:, data.columns != 'real']
 	y_true = data['real']
 	y_pred = model.predict(x)
-	print accuracy_score(y_true, y_pred)
+	y_pred_prob = model.predict_proba(x)
+	print "Accuracy: " + str(accuracy_score(y_true, y_pred))
+	print "F-score: " + str(f1_score(y_true, y_pred))
+	print "AUC: " + str(roc_auc_score(y_true, y_pred_prob))
 	# print model.coef_
 
 if __name__ == "__main__": main()
