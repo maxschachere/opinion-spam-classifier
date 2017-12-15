@@ -25,25 +25,28 @@ def main():
 	test_data = raw_data.loc[set(raw_data.index) - set(training_data.index) - set(validation_data.index)]
 
 	training_data_featurized = featurize_data(training_data, training=None)
-	print training_data_featurized.shape
+	# print training_data_featurized.shape
 	validation_data_featurized = featurize_data(validation_data, training=training_data_featurized)
-	print validation_data_featurized.shape
+	# print validation_data_featurized.shape
 	test_data_featurized = featurize_data(test_data, training=training_data_featurized)
-	print test_data_featurized.shape
+	# print test_data_featurized.shape
 	model = create_model(training_data_featurized)
 	evaluate_model(model, validation_data_featurized)
+	print("Performance on Test")
+	evaluate_model(model, test_data_featurized)
 
 	print("Moving to baseline")
 	baseline_unigrams = get_baseline_unigrams(training_data)
 	training_data_baseline = featurize_data_baseline(training_data, None)
-	print training_data_baseline.shape
-	print training_data_baseline.columns
+	# print training_data_baseline.shape
+	# print training_data_baseline.columns
 	validation_data_baseline = featurize_data_baseline(validation_data, training_data_baseline)
-	print validation_data_baseline.shape
+	# print validation_data_baseline.shape
 	test_data_baseline = featurize_data_baseline(test_data, training_data_baseline)
-	print test_data_baseline.shape
+	# print test_data_baseline.shape
 	model = create_model(training_data_baseline)
 	evaluate_model(model, validation_data_baseline)
+	print("Performance on Baseline Test")
 
 def load_data():
 	"""
@@ -82,16 +85,11 @@ def featurize_data(data, training):
 		processed_data.append(review_vector)
 
 	processed_dataframe = pd.DataFrame.from_dict(processed_data)
-	# this code standardizes dimensions across training, validation and test
-	# THIS NEEDS TO BE RUN IF WORD AND POS BIGRAMS ARE BEING USED
-	# if training_features is not None:
-	# 	print("Standardizing Dimensions to training dimensions")
-	# 	i = 1
-	# 	for feature in training_features:
-	# 		print(i)
-	# 		if feature not in list(processed_dataframe):
-	# 			processed_dataframe[feature] = 0
-	# 		i+=1
+	# standardize dimensions
+	if training is not None:
+		for training_feature in list(training):
+			if training_feature not in list(processed_dataframe):
+				processed_dataframe[training_feature] = 0
 	processed_dataframe.fillna(0, inplace=True)
 	return processed_dataframe
 
@@ -112,19 +110,14 @@ def featurize_data_baseline(data, training_features):
 	# THIS NEEDS TO BE RUN IF WORD AND POS BIGRAMS ARE BEING USED
 	if training_features is not None:
 		print("Standardizing Dimensions to training dimensions")
-		# i = 1
 		for feature in training_features:
-			# print(i)
 			if feature not in list(processed_dataframe):
 				processed_dataframe[feature] = 0
-			# i+=1
 	processed_dataframe.fillna(0, inplace=True)
 	return processed_dataframe
 
-
+# deprecated
 def get_baseline_unigrams(training_data):
-	# print type(training_data)
-	# print list(training_data)
 	unigrams = set()
 	all_reviews = training_data['review'].values
 	for review in all_reviews:
@@ -165,17 +158,7 @@ def featurize_review(review, training_features):
 	review_vector['title'] = 0
 	review_vector['number'] = 0
 	review_vector['alphanumeric'] = 0
-	# review_bigram_dictionary = get_review_pos_word_bigrams(review)
-	# review_word_bigrams = review_bigram_dictionary['word_bigrams']
-	# review_pos_bigrams = review_bigram_dictionary['pos_bigrams']
 
-	# overall_word_bigram_set = overall_bigram_dict["word_bigram_set"]
-	# overall_pos_bigram_set = overall_bigram_dict["pos_bigram_set"]
-
-	# for word_bigram in overall_word_bigram_set:
-	# 	review_vector[word_bigram] = review_word_bigrams.count(word_bigram)
-	# for pos_bigram in overall_pos_bigram_set:
-	# 	review_vector[pos_bigram] = review_pos_bigrams.count(pos_bigram)
 	for i in range(len(pos_tags)):
 		curr_word, curr_tag = pos_tags[i]
 		if i == 0:
@@ -184,32 +167,6 @@ def featurize_review(review, training_features):
 		else:
 			prev_word, prev_tag = pos_tags[i - 1]
 
-		word_bigram = prev_word + "-" + curr_word
-		pos_bigram = prev_tag + "-" + curr_tag
-
-		# THIS BIGRAM WAS NOT EFFECTIVE AT ALL
-		# if training_features is None:
-		# 	# this means we ARE training
-		# 	if word_bigram in review_vector.keys():
-		# 		review_vector[word_bigram] = review_vector[word_bigram] + 1
-		# 	else:
-		# 		review_vector[word_bigram] = 1
-		# 	if pos_bigram in review_vector.keys():
-		# 		review_vector[pos_bigram] = review_vector[pos_bigram] + 1
-		# 	else:
-		# 		review_vector[pos_bigram] = 1
-		# else:
-		# 	# this means we are NOT training
-		# 	if word_bigram in training_features:
-		# 		if word_bigram in review_vector.keys():
-		# 			review_vector[word_bigram] = review_vector[word_bigram] + 1
-		# 		else:
-		# 			review_vector[word_bigram] = 1
-		# 	if pos_bigram in training_features:
-		# 		if pos_bigram in review_vector.keys():
-		# 			review_vector[pos_bigram] = review_vector[pos_bigram] + 1
-		# 		else:
-		# 			review_vector[pos_bigram] = 1
 
 		if curr_word.lower() in ['i', 'we', 'me', 'us']:
 			first_person_count = first_person_count + 1
@@ -220,19 +177,6 @@ def featurize_review(review, training_features):
 			review_vector[curr_tag] = review_vector[curr_tag] + 1
 		else:
 			review_vector[curr_tag] = 1
-
-		# THIS UNIGRAM WAS NOT EFFECTIVE AT ALL:
-		# if training_features is None:
-		# 	if curr_word in review_vector.keys():
-		# 		review_vector[curr_word] = review_vector[curr_word] + 1
-		# 	else:
-		# 		review_vector[curr_word] = 1
-		# else:
-		# 	if curr_word in training_features:
-		# 		if curr_word in review_vector.keys():
-		# 			review_vector[curr_word] = review_vector[curr_word] + 1
-		# 		else:
-		# 			review_vector[curr_word] = 1
 
 		# check capitalization
 		if curr_word.isupper():
@@ -249,12 +193,6 @@ def featurize_review(review, training_features):
 	review_vector['average_word_length'] = sum(len(x) for x in words) / len(words)
 	review_vector['first_person_freq'] = first_person_count / float(len(words))
 	review_vector['misspell_freq'] = misspelled_words / float(len(words))
-
-	# sentences = sent_tokenize(review)
-	# review_vector['grammar_errors'] = 0
-	# for sentence in sentences:
-	# 	matches = GRAMMAR_CHECK.check(sentence)
-	# 	review_vector['grammar_errors'] += len(matches)
 
 	review_vector['number_oov'] = 0
 	word_set = set()
@@ -296,11 +234,10 @@ def evaluate_model(model, data):
 	y_true = data['real']
 	y_pred = model.predict(x)
 	y_pred_prob = model.predict_proba(x)
-	# print model.classes_
-	# print y_pred_prob
+
 	print "Accuracy: " + str(accuracy_score(y_true, y_pred))
 	print "F-score: " + str(f1_score(y_true, y_pred))
 	print "AUC: " + str(roc_auc_score(y_true, y_pred_prob[:,1]))
-	# print model.coef_
+
 
 if __name__ == "__main__": main()
