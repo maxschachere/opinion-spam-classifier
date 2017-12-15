@@ -5,7 +5,7 @@ import nltk
 from sklearn import linear_model, svm, neighbors, naive_bayes
 from sklearn.metrics import accuracy_score, f1_score, roc_auc_score
 # UNCOMMENT THIS
-import enchant
+# import enchant
 
 import grammar_check
 from nltk.tokenize import sent_tokenize
@@ -13,7 +13,7 @@ from nltk import word_tokenize, pos_tag, ne_chunk
 
 DATA_SET_PATH = "Data Sets/op_spam_v1.4/"
 
-SPELLING_DICT = enchant.Dict("en_US")
+# SPELLING_DICT = enchant.Dict("en_US")
 GRAMMAR_CHECK = grammar_check.LanguageTool('en-US')
 
 def main():
@@ -25,10 +25,11 @@ def main():
 	test_data = raw_data.loc[set(raw_data.index)-set(training_data.index)-set(validation_data.index)]
 	
 	training_data = featurize_data(training_data, training=None)
+	print training_data.shape
 	validation_data = featurize_data(validation_data, training=training_data)
-	print validation_data
+	print validation_data.shape
 	test_data = featurize_data(test_data, training=training_data)
-
+	print test_data.shape
 	model = create_model(training_data)
 	evaluate_model(model, validation_data)
 
@@ -66,10 +67,13 @@ def featurize_data(data, training):
 		processed_data.append(review_vector)
 
 	processed_data = pd.DataFrame.from_dict(processed_data)
-	# if training_features is not None:
-	# 	for feature in training_features:
-	# 		if feature not in list(processed_data):
-	# 			processed_data[feature] = 0
+
+	# this code standardizes dimensions across training, validation and test
+	# THIS NEEDS TO BE RUN IF WORD AND POS BIGRAMS ARE BEING USED
+	if training_features is not None:
+		for feature in training_features:
+			if feature not in list(processed_data):
+				processed_data[feature] = 0
 	processed_data.fillna(0, inplace=True)
 	return processed_data
 
@@ -102,40 +106,40 @@ def featurize_review(review, training_features):
 			prev_word = ""
 			prev_tag = ""
 		else:
-			prev_word, prev_tag = pos_tags[i-0]
+			prev_word, prev_tag = pos_tags[i-1]
 
 		word_bigram = prev_word + "-" + curr_word
 		pos_bigram = prev_tag + "-" + curr_tag
 
 		#THIS BIGRAM WAS NOT EFFECTIVE AT ALL
-		# if training_features is None:
-		# 	#this means we ARE training
-		# 	if word_bigram in review_vector.keys():
-		# 		review_vector[word_bigram] = review_vector[word_bigram] + 1
-		# 	else:
-		# 		review_vector[word_bigram] = 1
-		# 	if pos_bigram in review_vector.keys():
-		# 		review_vector[pos_bigram] = review_vector[pos_bigram] + 1
-		# 	else:
-		# 		review_vector[pos_bigram] = 1
-		# else:
-		# 	#this means we are NOT training
-		# 	if word_bigram in training_features:
-		# 		if word_bigram in review_vector.keys():
-		# 			review_vector[word_bigram] = review_vector[word_bigram] + 1
-		# 		else:
-		# 			review_vector[word_bigram] = 1
-		# 	if pos_bigram in training_features:
-		# 		if pos_bigram in review_vector.keys():
-		# 			review_vector[pos_bigram] = review_vector[pos_bigram] + 1
-		# 		else:
-		# 			review_vector[pos_bigram] = 1
+		if training_features is None:
+			#this means we ARE training
+			if word_bigram in review_vector.keys():
+				review_vector[word_bigram] = review_vector[word_bigram] + 1
+			else:
+				review_vector[word_bigram] = 1
+			if pos_bigram in review_vector.keys():
+				review_vector[pos_bigram] = review_vector[pos_bigram] + 1
+			else:
+				review_vector[pos_bigram] = 1
+		else:
+			#this means we are NOT training
+			if word_bigram in training_features:
+				if word_bigram in review_vector.keys():
+					review_vector[word_bigram] = review_vector[word_bigram] + 1
+				else:
+					review_vector[word_bigram] = 1
+			if pos_bigram in training_features:
+				if pos_bigram in review_vector.keys():
+					review_vector[pos_bigram] = review_vector[pos_bigram] + 1
+				else:
+					review_vector[pos_bigram] = 1
 
 
 		if curr_word.lower() in ['i', 'we', 'me', 'us']:
 			first_person_count = first_person_count + 1
-		if re.match('[a-zA-Z]', curr_tag) and SPELLING_DICT.check(curr_word) is not True:
-			misspelled_words = misspelled_words + 1
+		# if re.match('[a-zA-Z]', curr_tag) and SPELLING_DICT.check(curr_word) is not True:
+		# 	misspelled_words = misspelled_words + 1
 		
 		if curr_tag in review_vector.keys():
 			review_vector[curr_tag] = review_vector[curr_tag] + 1
