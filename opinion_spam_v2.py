@@ -47,6 +47,7 @@ def main():
 	model = create_model(training_data_baseline)
 	evaluate_model(model, validation_data_baseline)
 	print("Performance on Baseline Test")
+	evaluate_model(model, test_data_baseline)
 
 def load_data():
 	"""
